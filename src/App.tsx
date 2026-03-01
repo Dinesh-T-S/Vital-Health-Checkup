@@ -240,7 +240,7 @@ export default function App() {
             <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center mb-4">
               <Activity className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold text-zinc-900">Vital Smtp</h1>
+            <h1 className="text-2xl font-bold text-zinc-900">Healtrix</h1>
             <p className="text-zinc-500 text-sm">Patient Health Monitoring System</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -289,7 +289,7 @@ export default function App() {
           <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
             <Activity className="text-white w-5 h-5" />
           </div>
-          <span className="font-bold text-xl tracking-tight">Vital Smtp</span>
+          <span className="font-bold text-xl tracking-tight">Healtrix</span>
         </div>
         
         <nav className="flex-1 px-4 space-y-1 mt-4">
@@ -338,7 +338,7 @@ export default function App() {
             <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
               <Activity className="text-white w-5 h-5" />
             </div>
-            <span className="font-bold text-xl tracking-tight">Vital Smtp</span>
+            <span className="font-bold text-xl tracking-tight">Healtrix</span>
           </div>
           <button onClick={() => setView('dashboard')} className="p-2 text-zinc-500"><LayoutDashboard className="w-6 h-6" /></button>
         </header>

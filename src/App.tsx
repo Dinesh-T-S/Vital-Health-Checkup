@@ -1100,12 +1100,12 @@ export default function App() {
                   className="w-4 h-4 text-emerald-600 border-zinc-300 rounded focus:ring-emerald-500"
                 />
                 <label htmlFor="bypass_cooldown" className="text-sm font-medium text-zinc-700">
-                  Bypass 3-month cooldown (Force Alert)
+                  Force Alert
                 </label>
               </div>
               <div className="p-4 bg-zinc-50 rounded-xl border border-zinc-100">
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  <span className="font-bold text-zinc-700">Thresholds:</span> High BP is 140/90 or higher. High Sugar is 120 mg/dL or higher. Alerts will be sent if these are reached and no alert was sent in the last 3 months.
+                  <span className="font-bold text-zinc-700">Thresholds:</span> High BP is 140/90 or higher. High Sugar is 120 mg/dL or higher. Alerts will be sent if these limits are reached and no recent alert has already been sent..
                 </p>
               </div>
               <button 

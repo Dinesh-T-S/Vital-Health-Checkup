@@ -18,7 +18,11 @@ import {
   Mail,
   Calendar,
   Heart,
-  Droplets
+  Droplets,
+  Trash2,
+  X,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -68,7 +72,7 @@ export default function App() {
     const saved = localStorage.getItem('vitaltrack_auth');
     return saved ? JSON.parse(saved) : { token: null, user: null };
   });
-  const [view, setView] = useState<'dashboard' | 'patients' | 'patient-detail'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'patients' | 'patient-detail' | 'settings'>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
@@ -79,7 +83,24 @@ export default function App() {
   const [isAddingTest, setIsAddingTest] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [trends, setTrends] = useState<any[]>([]);
+  const [settings, setSettings] = useState<{ alert_cooldown_days: string }>({ alert_cooldown_days: '90' });
   
+  // Custom UI states for sandboxed environment
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, title: string, message: string, onConfirm: () => void } | null>(null);
+  const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' }[]>([]);
+
+  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmModal({ isOpen: true, title, message, onConfirm });
+  };
+
   // Form states
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [patientForm, setPatientForm] = useState({ name: '', email: '', age: '' });
@@ -107,7 +128,20 @@ export default function App() {
         handleLogout();
         throw new Error('Unauthorized');
       }
-      return res.json();
+
+      const text = await res.text();
+      console.log(`[CLIENT] apiFetch ${url} - Status: ${res.status}, Body: ${text.substring(0, 100)}`);
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error("Failed to parse JSON:", text);
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Something went wrong');
+      }
+      return data;
     } catch (err: any) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -125,14 +159,16 @@ export default function App() {
 
   const loadDashboard = async () => {
     try {
-      const [statsData, patientsData, trendsData] = await Promise.all([
+      const [statsData, patientsData, trendsData, settingsData] = await Promise.all([
         apiFetch('/api/dashboard/stats'),
         apiFetch('/api/patients'),
-        apiFetch('/api/trends')
+        apiFetch('/api/trends'),
+        apiFetch('/api/settings')
       ]);
       setStats(statsData);
       setPatients(patientsData);
       setTrends(trendsData);
+      setSettings(settingsData);
     } catch (e) {
       console.error("Failed to load dashboard", e);
     }
@@ -151,7 +187,7 @@ export default function App() {
         localStorage.setItem('vitaltrack_auth', JSON.stringify(newAuth));
       }
     } catch (err) {
-      alert('Login failed');
+      addToast('Login failed', 'error');
     }
   };
 
@@ -195,14 +231,14 @@ export default function App() {
       console.log("Test result response:", data);
       if (data.alertTriggered) {
         if (data.emailStatus === 'sent') {
-          alert("Health Alert: An email notification has been sent to the patient due to high readings.");
+          addToast("Health Alert: An email notification has been sent to the patient due to high readings.", 'success');
         } else if (data.emailStatus === 'failed') {
-          alert(`Health Alert: High readings detected, but email failed to send: ${data.emailError}`);
+          addToast(`Health Alert: High readings detected, but email failed to send: ${data.emailError}`, 'error');
         } else {
-          alert("Health Alert: High readings detected. (Email logged to console)");
+          addToast("Health Alert: High readings detected. (Email logged to console)", 'info');
         }
       } else if (data.reason) {
-        alert(data.reason);
+        addToast(data.reason, 'info');
       }
       setIsAddingTest(false);
       setTestForm({ bp_sys: 120, bp_dia: 80, blood_sugar: 90 });
@@ -212,7 +248,71 @@ export default function App() {
       loadDashboard();
     } catch (error: any) {
       console.error("Add test error:", error);
-      alert(`Error adding test: ${error.message}`);
+      addToast(`Error adding test: ${error.message}`, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeletePatient = async (patientId: number) => {
+    console.log("handleDeletePatient called", patientId);
+    showConfirm(
+      "Delete Patient",
+      "Are you sure you want to delete this patient and all their records? This action cannot be undone.",
+      async () => {
+        try {
+          setIsSubmitting(true);
+          const result = await apiFetch(`/api/patients/${patientId}`, { method: 'DELETE' });
+          console.log("Delete patient result:", result);
+          addToast("Patient deleted successfully", 'success');
+          setView('patients');
+          await loadDashboard();
+        } catch (error: any) {
+          console.error("Delete patient error:", error);
+          addToast(`Error deleting patient: ${error.message}`, 'error');
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    );
+  };
+
+  const handleDeleteTest = async (testId: number) => {
+    console.log("handleDeleteTest called", testId);
+    showConfirm(
+      "Delete Test Record",
+      "Are you sure you want to delete this test record?",
+      async () => {
+        try {
+          setIsSubmitting(true);
+          const result = await apiFetch(`/api/tests/${testId}`, { method: 'DELETE' });
+          console.log("Delete test result:", result);
+          addToast("Test record deleted successfully", 'success');
+          if (selectedPatientId) {
+            await loadPatientDetail(selectedPatientId);
+          }
+          await loadDashboard();
+        } catch (error: any) {
+          console.error("Delete test error:", error);
+          addToast(`Error deleting test: ${error.message}`, 'error');
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    );
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await apiFetch('/api/settings', {
+        method: 'POST',
+        body: JSON.stringify(settings)
+      });
+      addToast("Settings updated successfully", 'success');
+    } catch (error: any) {
+      addToast(`Error updating settings: ${error.message}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -312,6 +412,16 @@ export default function App() {
           >
             <Users className="w-4 h-4" />
             Patients
+          </button>
+          <button 
+            onClick={() => setView('settings')}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all",
+              view === 'settings' ? "bg-emerald-50 text-emerald-700" : "text-zinc-500 hover:bg-zinc-100"
+            )}
+          >
+            <Filter className="w-4 h-4" />
+            Settings
           </button>
         </nav>
 
@@ -556,9 +666,23 @@ export default function App() {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <button onClick={() => loadPatientDetail(p.id)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors">
-                                <ChevronRight className="w-5 h-5" />
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    console.log("Delete patient button clicked", p.id);
+                                    e.stopPropagation();
+                                    handleDeletePatient(p.id);
+                                  }}
+                                  className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                  title="Delete Patient"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => loadPatientDetail(p.id)} className="p-2 text-zinc-400 hover:text-emerald-600 transition-colors">
+                                  <ChevronRight className="w-5 h-5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -586,45 +710,6 @@ export default function App() {
                 </div>
                 <div className="ml-auto flex gap-3">
                   <button 
-                    onClick={async () => {
-                      if (confirm("Send a manual health reminder email to this patient?")) {
-                        setIsSubmitting(true);
-                        try {
-                          const data = await apiFetch(`/api/patients/${selectedPatientId}/trigger-alert`, { method: 'POST' });
-                          console.log("Manual alert response:", data);
-                          loadPatientDetail(selectedPatientId!);
-                          if (data.success) {
-                            alert(data.mock ? "Mock email logged to console." : "Manual alert email sent successfully.");
-                          } else {
-                            alert(`Failed to send email: ${data.error}`);
-                          }
-                        } catch (error: any) {
-                          console.error("Manual alert error:", error);
-                          alert(`Error sending manual alert: ${error.message}`);
-                        } finally {
-                          setIsSubmitting(false);
-                        }
-                      }
-                    }}
-                    disabled={isSubmitting}
-                    className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all disabled:opacity-50"
-                  >
-                    <Bell className="w-4 h-4" />
-                    {isSubmitting ? 'Sending...' : 'Send Manual Alert'}
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      if (confirm("Reset the 3-month alert timer for this patient? This is for testing purposes.")) {
-                        await apiFetch(`/api/patients/${selectedPatientId}/reset-alert`, { method: 'POST' });
-                        loadPatientDetail(selectedPatientId!);
-                        alert("Alert timer reset. You can now trigger an automatic alert again.");
-                      }
-                    }}
-                    className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-all"
-                  >
-                    Reset Timer
-                  </button>
-                  <button 
                     onClick={() => {
                       setPatientForm({ 
                         name: patientDetail.patient.name, 
@@ -636,6 +721,17 @@ export default function App() {
                     className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-all"
                   >
                     Edit Details
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      console.log("Delete patient detail button clicked", patientDetail.patient.id);
+                      handleDeletePatient(patientDetail.patient.id);
+                    }}
+                    className="flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-rose-100 transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Patient
                   </button>
                   <button 
                     onClick={() => setIsAddingTest(true)}
@@ -707,13 +803,14 @@ export default function App() {
                             <th className="px-6 py-4">Blood Pressure</th>
                             <th className="px-6 py-4">Blood Sugar</th>
                             <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
                           {patientDetail.history.map(test => {
                             const isHigh = test.blood_sugar >= 120 || test.bp_sys >= 140 || test.bp_dia >= 90;
                             return (
-                              <tr key={test.id} className="hover:bg-zinc-50 transition-colors">
+                              <tr key={test.id} className="hover:bg-zinc-50 transition-colors group">
                                 <td className="px-6 py-4 text-sm text-zinc-600">{format(parseISO(test.test_date), 'MMM d, yyyy HH:mm')}</td>
                                 <td className="px-6 py-4 text-sm font-mono text-zinc-900">{test.bp_sys}/{test.bp_dia}</td>
                                 <td className="px-6 py-4 text-sm font-mono text-zinc-900">{test.blood_sugar} mg/dL</td>
@@ -724,6 +821,20 @@ export default function App() {
                                   )}>
                                     {isHigh ? 'High' : 'Normal'}
                                   </span>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <button 
+                                    type="button"
+                                    onClick={(e) => {
+                                      console.log("Delete test button clicked", test.id);
+                                      e.stopPropagation();
+                                      handleDeleteTest(test.id);
+                                    }}
+                                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                    title="Delete Record"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </td>
                               </tr>
                             );
@@ -773,6 +884,58 @@ export default function App() {
                         {patientDetail.patient.last_alert_sent_at ? format(parseISO(patientDetail.patient.last_alert_sent_at), 'MMM d, yyyy') : 'Never'}
                       </span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {view === 'settings' && (
+            <div className="space-y-8">
+              <div>
+                <h2 className="text-3xl font-bold text-zinc-900">Settings</h2>
+                <p className="text-zinc-500">Configure application behavior and alert rules.</p>
+              </div>
+
+              <div className="bg-white p-8 rounded-2xl border border-zinc-200 shadow-sm max-w-2xl">
+                <form onSubmit={handleUpdateSettings} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-zinc-700 mb-2">Alert Cooldown (Days)</label>
+                    <p className="text-xs text-zinc-500 mb-4">Number of days to wait before sending another automatic alert email to the same patient.</p>
+                    <div className="flex items-center gap-4">
+                      <input 
+                        type="number" 
+                        min="1"
+                        max="365"
+                        className="w-32 px-4 py-2 rounded-xl border border-zinc-200 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        value={settings.alert_cooldown_days}
+                        onChange={e => setSettings({ ...settings, alert_cooldown_days: e.target.value })}
+                        required
+                      />
+                      <span className="text-sm text-zinc-600 font-medium">Days</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-100">
+                    <button 
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2 rounded-xl transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
+                    >
+                      {isSubmitting ? 'Saving...' : 'Save Settings'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 max-w-2xl">
+                <div className="flex gap-4">
+                  <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-amber-900 mb-1">Important Note</h4>
+                    <p className="text-sm text-amber-800 leading-relaxed">
+                      Changing the alert cooldown will affect all future health tests. Existing records will follow the new rule based on their last alert date.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -955,6 +1118,63 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Custom Confirmation Modal */}
+      {confirmModal?.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8 text-rose-600" />
+              </div>
+              <h3 className="text-xl font-bold text-zinc-900 mb-2">{confirmModal.title}</h3>
+              <p className="text-zinc-500 text-sm leading-relaxed">{confirmModal.message}</p>
+            </div>
+            <div className="p-4 bg-zinc-50 flex gap-3">
+              <button 
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-3 rounded-xl border border-zinc-200 text-zinc-700 font-bold text-sm hover:bg-white transition-all"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal(null);
+                }}
+                className="flex-1 px-4 py-3 rounded-xl bg-rose-600 text-white font-bold text-sm hover:bg-rose-700 transition-all shadow-lg shadow-rose-200"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-3 pointer-events-none">
+        {toasts.map(toast => (
+          <div 
+            key={toast.id}
+            className={cn(
+              "pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border animate-in slide-in-from-right-full duration-300 min-w-[300px]",
+              toast.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
+              toast.type === 'error' ? "bg-rose-50 border-rose-100 text-rose-800" :
+              "bg-zinc-900 border-zinc-800 text-white"
+            )}
+          >
+            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+            {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-600" />}
+            {toast.type === 'info' && <Info className="w-5 h-5 text-zinc-400" />}
+            <p className="text-sm font-bold flex-1">{toast.message}</p>
+            <button 
+              onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              className="p-1 hover:bg-black/5 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4 opacity-50" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

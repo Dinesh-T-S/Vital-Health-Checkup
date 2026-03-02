@@ -1,90 +1,63 @@
-![login](https://github.com/user-attachments/assets/d3973fd3-cb6a-4e06-b439-8d4e53939801)
-![dashboard](https://github.com/user-attachments/assets/d3760305-b144-48ee-813b-ec48d9e083ca)
-![patient list](https://github.com/user-attachments/assets/6a784590-57de-4c74-b37f-1881f5c94d1c)
-![add patient](https://github.com/user-attachments/assets/90a53f20-a53a-4d50-8c36-aa6209cdd32c)
-![edit patient details](https://github.com/user-attachments/assets/6d19a1b2-ddcb-4428-a8b1-f88f80dbeeb8)
-![patient details](https://github.com/user-attachments/assets/939c6e44-2221-4a0b-8f35-b3dec68399df)
-![add test result](https://github.com/user-attachments/assets/bcb47d72-cc92-472e-aff8-ac0a8d8a7f4b)
-![remainder email](https://github.com/user-attachments/assets/97ff8f7a-9808-485e-bb39-5100e37096a6)
+# Healtrix - Healthcare Monitoring & Alert System
 
-# Run and deploy your AI Studio app
+Healtrix is a professional healthcare monitoring application designed for healthcare providers to track patient vitals and automate health interventions. It provides a centralized dashboard for managing patient records, logging health metrics, and sending automated alerts when critical thresholds are reached.
 
-This contains everything you need to run your app locally.
+## 🚀 Tech Stack
 
-View your app in AI Studio: https://ai.studio/apps/122ce472-2a09-401e-867e-ddef0da1e90a
+### Frontend
+- **React 18+ (TypeScript)**: For a robust and type-safe user interface.
+- **Vite**: High-performance build tool and development server.
+- **Tailwind CSS**: Utility-first styling for a modern, responsive design.
+- **Lucide React**: Clean and consistent iconography.
+- **Recharts**: Interactive data visualization for health trends.
+- **Date-fns**: Precise date manipulation and formatting.
+- **Clsx & Tailwind-merge**: Efficient management of dynamic CSS classes.
 
-## Run Locally
+### Backend
+- **Node.js (Express)**: Scalable server-side logic and API management.
+- **Better-SQLite3**: High-performance, synchronous SQLite database for reliable data storage.
+- **JWT (JSON Web Tokens)**: Secure, stateless authentication for healthcare providers.
+- **Nodemailer**: Integration for automated email notifications (currently logged to console for demonstration).
 
-**Prerequisites:**  Node.js
+---
 
+## ✨ Key Features
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### 1. Patient Management
+- **Add Patient**: Easily register new patients with their name, email, and age.
+- **Edit Patient Details**: Update existing patient information at any time.
+- **Delete Patient**: Remove a patient and all their associated medical records permanently.
+- **Unique 9-Digit IDs**: Every patient is assigned a unique, collision-resistant 9-digit ID (e.g., `482930182`).
+- **Search Functionality**: Quickly find patients by name or email using the real-time search bar.
 
-<hr>
+### 2. Vitals Tracking & Management
+- **Add Test Records**: Log Blood Pressure (Systolic and Diastolic) and Blood Sugar (mg/dL) for any patient.
+- **Delete Test Records**: Remove individual test entries if they were entered incorrectly.
+- **History Tracking**: View a complete chronological history of all tests for each patient.
+- **Risk Assessment**: Automatic visual indicators for "High" vs "Normal" readings based on medical thresholds.
 
-<h1>🏥 Patient Health Monitoring System</h1>
+### 3. Automated Health Alerts
+- **Smart Triggers**: Alerts are automatically triggered when readings exceed thresholds:
+  - **Blood Pressure**: ≥ 140/90 mmHg
+  - **Blood Sugar**: ≥ 120 mg/dL
+- **Dynamic Alert Cooldown (Settings)**: Healthcare providers can customize the "Alert Cooldown" period (e.g., 30, 60, or 90 days) in the Settings tab. This prevents spamming patients with too many automated emails.
+- **Force Alert Option**: Providers can manually bypass the cooldown for urgent cases by checking "Bypass cooldown" when adding a test.
 
-<p>
-A responsive web application that stores patient health data, monitors medical readings,
-and sends automated alerts when abnormal values are detected.
-Perfect for healthcare providers to manage patient wellness and ensure timely check-ups.
-</p>
+### 4. Custom UI & Security
+- **Delete Confirmation**: All delete actions (patients or tests) require confirmation through a custom-built modal to prevent accidental data loss.
+- **Optimized for Sandbox**: Replaced native browser `confirm()` and `alert()` with a custom React-based modal and toast system to ensure 100% compatibility with sandboxed preview environments.
+- **Secure Access**: Protected routes ensuring only authorized personnel can access patient data via JWT authentication.
 
-<hr>
+### 5. Analytics & Insights
+- **Provider Dashboard**: High-level overview of total patients, high-risk cases, and recent activity.
+- **Trend Visualization**: Interactive charts showing health trends over time to help identify patterns.
 
-<h2>🔑 Core Features</h2>
+---
 
-<h3>1. 🧍 Patient Management</h3>
-<ul>
-  <li>Store patient details: name, email, blood pressure, blood sugar</li>
-  <li>Maintain full test history (previous + latest test dates)</li>
-  <li>Search patients by name or health parameters</li>
-</ul>
+## 🛠️ Getting Started
 
-<h3>2. 🚨 Automated Alert System</h3>
-<ul>
-  <li>Auto-sends alerts when:
-    <ul>
-      <li>Blood Pressure > <strong>140/90 mmHg</strong></li>
-      <li>Blood Sugar > <strong>120 mg/dL</strong></li>
-    </ul>
-  </li>
-  <li>Prevents spam: only one alert every 3 months</li>
-  <li>Tracks last alert sent date</li>
-</ul>
-
-<h3>3. 📊 Dashboard & Statistics</h3>
-<ul>
-  <li>Total number of patients</li>
-  <li>Completed vs pending tests</li>
-  <li>Patients with abnormal readings</li>
-  <li>Visualizations using charts (monthly trends, risk distribution)</li>
-  <li>Date-range filtering</li>
-</ul>
-
-<h3>4. 📅 Test History Tracking</h3>
-<ul>
-  <li>Full history table with date, BP, sugar level, and status</li>
-  <li>Compare previous and latest records</li>
-</ul>
-
-<h3>5. 🔐 Security</h3>
-<ul>
-  <li>Role-based authentication</li>
-  <li>Encrypted patient data</li>
-  <li>Secure email notifications</li>
-  <li>HTTPS support</li>
-</ul>
-
-<h3>6. 📱 Responsive Design</h3>
-<ul>
-  <li>Optimized for desktop, tablet, and mobile</li>
-  <li>Built using modern responsive UI frameworks</li>
-  <li>Clean and flexible layout</li>
-</ul>
-
-<hr>
+1. **Login**: Use the provided credentials to access the provider dashboard.
+2. **Add Patient**: Create a new patient record with their contact details.
+3. **Log Vitals**: Click on a patient to add their latest BP and Blood Sugar readings.
+4. **Monitor Alerts**: Check the patient's alert history to see if notifications were triggered.
+5. **Adjust Settings**: Visit the settings tab to fine-tune the alert frequency (Dynamic Alert Days).

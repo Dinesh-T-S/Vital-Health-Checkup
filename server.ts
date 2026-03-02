@@ -17,6 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database("health.db");
+db.pragma('foreign_keys = ON');
 
 // Initialize Database
 db.exec(`
@@ -54,6 +55,13 @@ db.exec(`
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id)
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+
+  INSERT OR IGNORE INTO settings (key, value) VALUES ('alert_cooldown_days', '90');
 `);
 
 // Migration: Add age column if missing
@@ -207,8 +215,16 @@ app.get("/api/patients", authenticateToken, (req, res) => {
 app.post("/api/patients", authenticateToken, (req, res) => {
   const { name, email, age } = req.body;
   try {
-    const result = db.prepare("INSERT INTO patients (name, email, age) VALUES (?, ?, ?)").run(name, email, age);
-    res.json({ id: result.lastInsertRowid });
+    // Generate a unique 9-digit ID
+    let patientId: number;
+    let exists: any;
+    do {
+      patientId = Math.floor(100000000 + Math.random() * 900000000);
+      exists = db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId);
+    } while (exists);
+
+    const result = db.prepare("INSERT INTO patients (id, name, email, age) VALUES (?, ?, ?, ?)").run(patientId, name, email, age);
+    res.json({ id: patientId });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
@@ -244,9 +260,12 @@ app.post("/api/tests", authenticateToken, async (req, res) => {
     const lastAlert = patient.last_alert_sent_at ? new Date(patient.last_alert_sent_at) : null;
     const now = new Date();
     
-    const threeMonthsInMs = 90 * 24 * 60 * 60 * 1000;
+    // Get dynamic cooldown from settings
+    const cooldownSetting = db.prepare("SELECT value FROM settings WHERE key = 'alert_cooldown_days'").get() as any;
+    const cooldownDays = parseInt(cooldownSetting?.value || "90");
+    const cooldownMs = cooldownDays * 24 * 60 * 60 * 1000;
     
-    if (bypass_cooldown || !lastAlert || (now.getTime() - lastAlert.getTime() > threeMonthsInMs)) {
+    if (bypass_cooldown || !lastAlert || (now.getTime() - lastAlert.getTime() > cooldownMs)) {
       alertTriggered = true;
       const type = (bp_sys >= 140 || bp_dia >= 90) && blood_sugar >= 120 ? "Both" : (blood_sugar >= 120 ? "Blood Sugar" : "Blood Pressure");
       const valueSummary = `BP: ${bp_sys}/${bp_dia}, Sugar: ${blood_sugar}`;
@@ -268,51 +287,66 @@ Thank you.`;
         emailError: emailResult.error 
       });
     } else {
-      const daysRemaining = Math.ceil((threeMonthsInMs - (now.getTime() - lastAlert.getTime())) / (24 * 60 * 60 * 1000));
-      return res.json({ id: result.lastInsertRowid, alertTriggered: false, reason: `Alert skipped: 3-month rule active. Next alert available in ${daysRemaining} days. Use 'Bypass' to force.` });
+      const daysRemaining = Math.ceil((cooldownMs - (now.getTime() - lastAlert.getTime())) / (24 * 60 * 60 * 1000));
+      return res.json({ id: result.lastInsertRowid, alertTriggered: false, reason: `Alert skipped: ${cooldownDays}-day rule active. Next alert available in ${daysRemaining} days.` });
     }
   }
 
   res.json({ id: result.lastInsertRowid, alertTriggered });
 });
 
-app.post("/api/patients/:id/reset-alert", authenticateToken, (req, res) => {
-  db.prepare("UPDATE patients SET last_alert_sent_at = NULL WHERE id = ?").run(req.params.id);
-  res.json({ success: true });
+app.delete("/api/tests/:id", authenticateToken, (req: any, res) => {
+  const testId = parseInt(req.params.id);
+  console.log(`[SERVER] DELETE /api/tests/${testId} - User: ${req.user?.username}`);
+  try {
+    const result = db.prepare("DELETE FROM tests WHERE id = ?").run(testId);
+    console.log(`[SERVER] DELETE result: ${result.changes} changes`);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "Test record not found" });
+    }
+    res.json({ success: true });
+  } catch (e: any) {
+    console.error(`[SERVER] DELETE error:`, e);
+    res.status(400).json({ error: e.message });
+  }
 });
 
-app.post("/api/patients/:id/trigger-alert", authenticateToken, async (req, res) => {
-  const patient: any = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
-  if (!patient) return res.status(404).json({ error: "Patient not found" });
+app.delete("/api/patients/:id", authenticateToken, (req: any, res) => {
+  const patientId = parseInt(req.params.id);
+  console.log(`[SERVER] DELETE /api/patients/${patientId} - User: ${req.user?.username}`);
+  try {
+    // Manually delete related records to ensure cleanup
+    const testsResult = db.prepare("DELETE FROM tests WHERE patient_id = ?").run(patientId);
+    const alertsResult = db.prepare("DELETE FROM alerts WHERE patient_id = ?").run(patientId);
+    console.log(`[SERVER] Deleted ${testsResult.changes} tests and ${alertsResult.changes} alerts`);
+    
+    const result = db.prepare("DELETE FROM patients WHERE id = ?").run(patientId);
+    console.log(`[SERVER] Deleted patient result: ${result.changes} changes`);
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+    res.json({ success: true });
+  } catch (e: any) {
+    console.error(`[SERVER] DELETE patient error:`, e);
+    res.status(400).json({ error: e.message });
+  }
+});
 
-  const latestTest: any = db.prepare("SELECT * FROM tests WHERE patient_id = ? ORDER BY test_date DESC LIMIT 1").get(req.params.id);
-  
-  const valueSummary = latestTest 
-    ? `Latest BP: ${latestTest.bp_sys}/${latestTest.bp_dia}, Latest Sugar: ${latestTest.blood_sugar}`
-    : "No recent test data available";
-  
-  const type = "Manual Reminder";
-  const now = new Date();
+app.get("/api/settings", authenticateToken, (req, res) => {
+  const settings = db.prepare("SELECT * FROM settings").all();
+  const settingsObj = (settings as any[]).reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {});
+  res.json(settingsObj);
+});
 
-  // Record the alert
-  db.prepare("INSERT INTO alerts (patient_id, type, value_summary) VALUES (?, ?, ?)").run(req.params.id, type, valueSummary);
-  
-  // We update the last_alert_sent_at to maintain the 3-month rule for automatic alerts
-  db.prepare("UPDATE patients SET last_alert_sent_at = ? WHERE id = ?").run(now.toISOString(), req.params.id);
-
-  const subject = "Health Check-Up Reminder";
-  const body = `Dear ${patient.name},
-Your recent test results show that your blood pressure or blood sugar levels are above the normal range.
-We recommend scheduling a regular health check-up.
-Thank you.`;
-
-  const emailResult = await sendEmail(patient.email, subject, body);
-
-  res.json({ 
-    success: emailResult.success, 
-    error: emailResult.error,
-    mock: emailResult.mock 
-  });
+app.post("/api/settings", authenticateToken, (req, res) => {
+  const { alert_cooldown_days } = req.body;
+  try {
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('alert_cooldown_days', alert_cooldown_days.toString());
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 app.get("/api/trends", authenticateToken, (req, res) => {

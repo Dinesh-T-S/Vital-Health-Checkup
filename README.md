@@ -1,6 +1,14 @@
 # Healtrix - Healthcare Monitoring & Alert System
 
-Healtrix is a professional healthcare monitoring application designed for healthcare providers to track patient vitals and automate health interventions. It provides a centralized dashboard for managing patient records, logging health metrics, and sending automated alerts when critical thresholds are reached.
+Healtrix is a professional healthcare monitoring application designed for healthcare providers to track patient Healtrix and automate health interventions. It provides a centralized dashboard for managing patient records, logging health metrics, and sending automated alerts when critical thresholds are reached.
+
+## 📋 Feature Summary
+- **Dynamic Alert Days**: Fully configurable alert cooldown period (Settings tab).
+- **Patient Management**: Add, Edit, and Delete patient profiles.
+- **Test Management**: Add and Delete individual test records.
+- **Search**: Real-time search functionality for the patient database.
+- **Safety**: Custom Delete Confirmation modals for all destructive actions.
+- **Automation**: Intelligent health alerts with "Force Alert" bypass.
 
 ## 🚀 Tech Stack
 
@@ -30,7 +38,7 @@ Healtrix is a professional healthcare monitoring application designed for health
 - **Unique 9-Digit IDs**: Every patient is assigned a unique, collision-resistant 9-digit ID (e.g., `482930182`).
 - **Search Functionality**: Quickly find patients by name or email using the real-time search bar.
 
-### 2. Vitals Tracking & Management
+### 2. Healtrix Tracking & Management
 - **Add Test Records**: Log Blood Pressure (Systolic and Diastolic) and Blood Sugar (mg/dL) for any patient.
 - **Delete Test Records**: Remove individual test entries if they were entered incorrectly.
 - **History Tracking**: View a complete chronological history of all tests for each patient.
@@ -58,6 +66,6 @@ Healtrix is a professional healthcare monitoring application designed for health
 
 1. **Login**: Use the provided credentials to access the provider dashboard.
 2. **Add Patient**: Create a new patient record with their contact details.
-3. **Log Vitals**: Click on a patient to add their latest BP and Blood Sugar readings.
+3. **Log Healtrix**: Click on a patient to add their latest BP and Blood Sugar readings.
 4. **Monitor Alerts**: Check the patient's alert history to see if notifications were triggered.
 5. **Adjust Settings**: Visit the settings tab to fine-tune the alert frequency (Dynamic Alert Days).

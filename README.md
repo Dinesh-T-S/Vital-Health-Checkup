@@ -1,21 +1,6 @@
-# Healtrix - Healthcare Monitoring & Alert System
+# Health Tracker - Healthcare Monitoring & Alert System
 
-Healtrix is a professional healthcare monitoring application designed for healthcare providers to track patient Healtrix and automate health interventions. It provides a centralized dashboard for managing patient records, logging health metrics, and sending automated alerts when critical thresholds are reached.
-
-## 📋 Healtrix Overview
-
-![login](https://github.com/user-attachments/assets/8a294f1e-4c31-4bcb-9a2f-c3a7dad57006)
-![Dashboard](https://github.com/user-attachments/assets/242ef03e-a331-463b-a8ae-0f1177fbee31)
-![configuration](https://github.com/user-attachments/assets/59cb0817-284a-42e8-9c89-3dd48a1962f3)
-![add patient](https://github.com/user-attachments/assets/c6d807dd-6c14-422a-8afb-193a169e6062)
-![patient list](https://github.com/user-attachments/assets/c2c68de7-110a-4b91-be87-6273e95ed70d)
-![patient details](https://github.com/user-attachments/assets/0d9ffc17-135d-44e0-a952-3e5801ae8aa3)
-![add test result](https://github.com/user-attachments/assets/478cb0d1-fbf7-4c00-921c-15a7a4590905)
-![remainder email](https://github.com/user-attachments/assets/af899d60-3b3b-457f-a3cf-b8280ef6f4d3)
-![edit patient details](https://github.com/user-attachments/assets/84fb0aa4-71a5-434b-ab5d-7af6f406f260)
-![delete test](https://github.com/user-attachments/assets/88ab4dfa-d877-40a7-af66-145894d8f718)
-![delete patient](https://github.com/user-attachments/assets/4ef9cbaf-5c97-45ff-b858-73b1f8970cc4)
-
+Health Tracker is a professional healthcare monitoring application designed for healthcare providers to track patient health and automate health interventions. It provides a centralized dashboard for managing patient records, logging health metrics, and sending automated alerts when critical thresholds are reached.
 
 ## 📋 Feature Summary
 - **Dynamic Alert Days**: Fully configurable alert cooldown period (Settings tab).
@@ -53,7 +38,7 @@ Healtrix is a professional healthcare monitoring application designed for health
 - **Unique 9-Digit IDs**: Every patient is assigned a unique, collision-resistant 9-digit ID (e.g., `482930182`).
 - **Search Functionality**: Quickly find patients by name or email using the real-time search bar.
 
-### 2. Healtrix Tracking & Management
+### 2. Health Tracker Tracking & Management
 - **Add Test Records**: Log Blood Pressure (Systolic and Diastolic) and Blood Sugar (mg/dL) for any patient.
 - **Delete Test Records**: Remove individual test entries if they were entered incorrectly.
 - **History Tracking**: View a complete chronological history of all tests for each patient.
@@ -81,6 +66,6 @@ Healtrix is a professional healthcare monitoring application designed for health
 
 1. **Login**: Use the provided credentials to access the provider dashboard.
 2. **Add Patient**: Create a new patient record with their contact details.
-3. **Log Healtrix**: Click on a patient to add their latest BP and Blood Sugar readings.
+3. **Log Vitals**: Click on a patient to add their latest BP and Blood Sugar readings.
 4. **Monitor Alerts**: Check the patient's alert history to see if notifications were triggered.
 5. **Adjust Settings**: Visit the settings tab to fine-tune the alert frequency (Dynamic Alert Days).

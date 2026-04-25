@@ -3,11 +3,19 @@ export interface Patient {
   name: string;
   email: string;
   age: number | null;
+  gender: string | null;
+  patient_type: string | null;
+  employee_code: string | null;
+  uin_number: string | null;
+  phone: string | null;
   created_at: string;
   last_alert_sent_at: string | null;
   latest_test_date?: string;
   latest_bp?: string;
   latest_sugar?: number;
+  latest_sugar_type?: string;
+  latest_cholesterol?: number;
+  latest_pulse?: number;
 }
 
 export interface TestRecord {
@@ -16,6 +24,9 @@ export interface TestRecord {
   bp_sys: number;
   bp_dia: number;
   blood_sugar: number;
+  sugar_type: string;
+  cholesterol: number;
+  pulse_rate: number;
   test_date: string;
 }
 

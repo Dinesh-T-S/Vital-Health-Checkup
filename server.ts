@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
@@ -10,6 +11,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`[STARTUP] GMAIL_USER: ${process.env.GMAIL_USER ? 'SET' : 'MISSING'}`);
 console.log(`[STARTUP] GMAIL_PASS: ${process.env.GMAIL_PASS ? 'SET' : 'MISSING'}`);
 
@@ -33,6 +35,11 @@ db.exec(`
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     age INTEGER,
+    gender TEXT,
+    patient_type TEXT,
+    employee_code TEXT,
+    uin_number TEXT,
+    employee_number TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_alert_sent_at DATETIME
   );
@@ -43,6 +50,9 @@ db.exec(`
     bp_sys INTEGER NOT NULL,
     bp_dia INTEGER NOT NULL,
     blood_sugar INTEGER NOT NULL,
+    sugar_type TEXT DEFAULT 'Random',
+    cholesterol INTEGER DEFAULT 0,
+    pulse_rate INTEGER DEFAULT 0,
     test_date DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (patient_id) REFERENCES patients(id)
   );
@@ -62,13 +72,47 @@ db.exec(`
   );
 
   INSERT OR IGNORE INTO settings (key, value) VALUES ('alert_cooldown_days', '90');
+  INSERT OR IGNORE INTO settings (key, value) VALUES ('admin_notification_email', 'dineshts465@gmail.com');
 `);
 
-// Migration: Add age column if missing
+// Migration: Add new columns if missing
 const tableInfo = db.prepare("PRAGMA table_info(patients)").all() as any[];
-if (!tableInfo.some(col => col.name === 'age')) {
-  db.exec("ALTER TABLE patients ADD COLUMN age INTEGER");
-}
+const patientColumnsToAdd = [
+  { name: 'age', type: 'INTEGER' },
+  { name: 'gender', type: 'TEXT' },
+  { name: 'patient_type', type: 'TEXT' },
+  { name: 'employee_code', type: 'TEXT' },
+  { name: 'uin_number', type: 'TEXT' },
+  { name: 'employee_number', type: 'TEXT' },
+  { name: 'phone', type: 'TEXT' }
+];
+
+patientColumnsToAdd.forEach(column => {
+  if (!tableInfo.some(col => col.name === column.name)) {
+    try {
+      db.exec(`ALTER TABLE patients ADD COLUMN ${column.name} ${column.type}`);
+    } catch (e) {
+      console.error(`[MIGRATION ERROR] Failed to add column ${column.name}:`, e);
+    }
+  }
+});
+
+const testTableInfo = db.prepare("PRAGMA table_info(tests)").all() as any[];
+const testColumnsToAdd = [
+  { name: 'sugar_type', type: 'TEXT' },
+  { name: 'cholesterol', type: 'INTEGER' },
+  { name: 'pulse_rate', type: 'INTEGER' }
+];
+
+testColumnsToAdd.forEach(column => {
+  if (!testTableInfo.some(col => col.name === column.name)) {
+    try {
+      db.exec(`ALTER TABLE tests ADD COLUMN ${column.name} ${column.type}`);
+    } catch (e) {
+      console.error(`[MIGRATION ERROR] Failed to add column ${column.name}:`, e);
+    }
+  }
+});
 
 // Seed Admin User if not exists
 const adminExists = db.prepare("SELECT * FROM users WHERE username = ?").get("admin");
@@ -175,7 +219,12 @@ app.get("/api/dashboard/stats", authenticateToken, (req, res) => {
     SELECT COUNT(DISTINCT patient_id) as count 
     FROM tests t1
     WHERE t1.id = (SELECT id FROM tests t2 WHERE t2.patient_id = t1.patient_id ORDER BY test_date DESC LIMIT 1)
-    AND (bp_sys >= 140 OR bp_dia >= 90 OR blood_sugar >= 120)
+    AND (
+      bp_sys >= 140 OR bp_dia >= 90 OR 
+      (sugar_type = 'Fasting' AND blood_sugar > 100) OR
+      (sugar_type != 'Fasting' AND blood_sugar >= 140) OR
+      (cholesterol >= 200)
+    )
   `).get() as any;
 
   // Pending tests: Patients who haven't had a test in the last 30 days
@@ -202,18 +251,27 @@ app.get("/api/dashboard/stats", authenticateToken, (req, res) => {
 app.get("/api/patients", authenticateToken, (req, res) => {
   const search = req.query.search || "";
   const patients = db.prepare(`
-    SELECT p.*, 
-    (SELECT test_date FROM tests WHERE patient_id = p.id ORDER BY test_date DESC LIMIT 1) as latest_test_date,
-    (SELECT bp_sys || '/' || bp_dia FROM tests WHERE patient_id = p.id ORDER BY test_date DESC LIMIT 1) as latest_bp,
-    (SELECT blood_sugar FROM tests WHERE patient_id = p.id ORDER BY test_date DESC LIMIT 1) as latest_sugar
+    SELECT p.*, t.test_date as latest_test_date, 
+    (t.bp_sys || '/' || t.bp_dia) as latest_bp, 
+    t.blood_sugar as latest_sugar,
+    t.sugar_type as latest_sugar_type,
+    t.cholesterol as latest_cholesterol,
+    t.pulse_rate as latest_pulse
     FROM patients p
+    LEFT JOIN (
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER(PARTITION BY patient_id ORDER BY test_date DESC, id DESC) as rn
+        FROM tests
+      ) WHERE rn = 1
+    ) t ON p.id = t.patient_id
     WHERE p.name LIKE ? OR p.email LIKE ?
+    ORDER BY p.name ASC
   `).all(`%${search}%`, `%${search}%`);
   res.json(patients);
 });
 
 app.post("/api/patients", authenticateToken, (req, res) => {
-  const { name, email, age } = req.body;
+  const { name, email, age, gender, patient_type, employee_code, uin_number, phone } = req.body;
   try {
     // Generate a unique 9-digit ID
     let patientId: number;
@@ -223,7 +281,10 @@ app.post("/api/patients", authenticateToken, (req, res) => {
       exists = db.prepare("SELECT id FROM patients WHERE id = ?").get(patientId);
     } while (exists);
 
-    const result = db.prepare("INSERT INTO patients (id, name, email, age) VALUES (?, ?, ?, ?)").run(patientId, name, email, age);
+    const result = db.prepare(`
+      INSERT INTO patients (id, name, email, age, gender, patient_type, employee_code, uin_number, phone) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(patientId, name, email, age, gender, patient_type, employee_code, uin_number, phone);
     res.json({ id: patientId });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
@@ -231,9 +292,13 @@ app.post("/api/patients", authenticateToken, (req, res) => {
 });
 
 app.put("/api/patients/:id", authenticateToken, (req, res) => {
-  const { name, email, age } = req.body;
+  const { name, email, age, gender, patient_type, employee_code, uin_number, phone } = req.body;
   try {
-    db.prepare("UPDATE patients SET name = ?, email = ?, age = ? WHERE id = ?").run(name, email, age, req.params.id);
+    db.prepare(`
+      UPDATE patients 
+      SET name = ?, email = ?, age = ?, gender = ?, patient_type = ?, employee_code = ?, uin_number = ?, phone = ? 
+      WHERE id = ?
+    `).run(name, email, age, gender, patient_type, employee_code, uin_number, phone, req.params.id);
     res.json({ success: true });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
@@ -241,20 +306,85 @@ app.put("/api/patients/:id", authenticateToken, (req, res) => {
 });
 
 app.get("/api/patients/:id", authenticateToken, (req, res) => {
-  const patient = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
+  const patient = db.prepare(`
+    SELECT p.*, t.test_date as latest_test_date, 
+    (t.bp_sys || '/' || t.bp_dia) as latest_bp, 
+    t.blood_sugar as latest_sugar,
+    t.sugar_type as latest_sugar_type,
+    t.cholesterol as latest_cholesterol,
+    t.pulse_rate as latest_pulse
+    FROM patients p
+    LEFT JOIN (
+      SELECT * FROM (
+        SELECT *, ROW_NUMBER() OVER(PARTITION BY patient_id ORDER BY test_date DESC, id DESC) as rn
+        FROM tests
+      ) WHERE rn = 1
+    ) t ON p.id = t.patient_id
+    WHERE p.id = ?
+  `).get(req.params.id);
+  
   const history = db.prepare("SELECT * FROM tests WHERE patient_id = ? ORDER BY test_date DESC").all(req.params.id);
   const alerts = db.prepare("SELECT * FROM alerts WHERE patient_id = ? ORDER BY sent_at DESC").all(req.params.id);
   res.json({ patient, history, alerts });
 });
 
+app.post("/api/patients/:id/trigger-email", authenticateToken, async (req, res) => {
+  try {
+    const patient: any = db.prepare("SELECT * FROM patients WHERE id = ?").get(req.params.id);
+    if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+    const latestTest: any = db.prepare("SELECT * FROM tests WHERE patient_id = ? ORDER BY test_date DESC LIMIT 1").get(req.params.id);
+    
+    let valueSummary = "No recent test records found.";
+    if (latestTest) {
+      valueSummary = `BP: ${latestTest.bp_sys}/${latestTest.bp_dia}, Sugar: ${latestTest.blood_sugar} (${latestTest.sugar_type}), Cholesterol: ${latestTest.cholesterol}, Pulse: ${latestTest.pulse_rate} bpm`;
+    }
+
+    const subject = "Health Update - Health Tracker (Manual Notification)";
+    const body = `Dear ${patient.name},
+This is a manual health notification from the Health Tracker system.
+
+Summary of your latest values on record:
+- ${valueSummary}
+
+We recommend regular monitoring and consulting with your doctor if you have any concerns.
+Thank you for using Health Tracker.`;
+
+    const emailResult = await sendEmail(patient.email, subject, body);
+    
+    // Create an alert record for this manual trigger too
+    db.prepare("INSERT INTO alerts (patient_id, type, value_summary) VALUES (?, ?, ?)")
+      .run(patient.id, "Manual Follow-up", valueSummary);
+
+    res.json({ success: true, emailStatus: emailResult.success ? 'sent' : 'failed', error: emailResult.error });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post("/api/tests", authenticateToken, async (req, res) => {
-  const { patient_id, bp_sys, bp_dia, blood_sugar, bypass_cooldown } = req.body;
+  const { patient_id, bp_sys, bp_dia, blood_sugar, sugar_type, cholesterol, pulse_rate, bypass_cooldown } = req.body;
   
-  const result = db.prepare("INSERT INTO tests (patient_id, bp_sys, bp_dia, blood_sugar) VALUES (?, ?, ?, ?)")
-    .run(patient_id, bp_sys, bp_dia, blood_sugar);
+  const result = db.prepare("INSERT INTO tests (patient_id, bp_sys, bp_dia, blood_sugar, sugar_type, cholesterol, pulse_rate) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(patient_id, bp_sys, bp_dia, blood_sugar, sugar_type || 'Random', cholesterol || 0, pulse_rate || 0);
 
   let alertTriggered = false;
-  const isHigh = bp_sys >= 140 || bp_dia >= 90 || blood_sugar >= 120;
+  
+  // High risk logic updated based on user request
+  // Normal BP: < 120/80 (we flag >= 140/90 as high risk for alert)
+  // Sugar Normal: Fasting <= 100, After eating < 140
+  // Pulse Normal: 60-100 bpm
+  let sugarHigh = false;
+  if (sugar_type === 'Fasting') {
+    sugarHigh = blood_sugar > 100;
+  } else {
+    sugarHigh = blood_sugar >= 140;
+  }
+  
+  const pulseAbnormal = pulse_rate && (pulse_rate < 50 || pulse_rate > 110);
+  
+  const isHigh = bp_sys >= 140 || bp_dia >= 90 || sugarHigh || (cholesterol && cholesterol >= 200) || pulseAbnormal;
+  
   if (isHigh) {
     const patient: any = db.prepare("SELECT * FROM patients WHERE id = ?").get(patient_id);
     const lastAlert = patient.last_alert_sent_at ? new Date(patient.last_alert_sent_at) : null;
@@ -267,19 +397,36 @@ app.post("/api/tests", authenticateToken, async (req, res) => {
     
     if (bypass_cooldown || !lastAlert || (now.getTime() - lastAlert.getTime() > cooldownMs)) {
       alertTriggered = true;
-      const type = (bp_sys >= 140 || bp_dia >= 90) && blood_sugar >= 120 ? "Both" : (blood_sugar >= 120 ? "Blood Sugar" : "Blood Pressure");
-      const valueSummary = `BP: ${bp_sys}/${bp_dia}, Sugar: ${blood_sugar}`;
+      let reasons = [];
+      if (bp_sys >= 140 || bp_dia >= 90) reasons.push("Blood Pressure");
+      if (sugarHigh) reasons.push(`Blood Sugar (${sugar_type})`);
+      if (cholesterol >= 200) reasons.push("Cholesterol");
+      if (pulseAbnormal) reasons.push("Pulse Rate");
+      
+      const type = reasons.join(" & ");
+      const valueSummary = `BP: ${bp_sys}/${bp_dia}, Sugar: ${blood_sugar} (${sugar_type}), Cholesterol: ${cholesterol}, Pulse: ${pulse_rate} bpm`;
       
       db.prepare("INSERT INTO alerts (patient_id, type, value_summary) VALUES (?, ?, ?)").run(patient_id, type, valueSummary);
       db.prepare("UPDATE patients SET last_alert_sent_at = ? WHERE id = ?").run(now.toISOString(), patient_id);
       
-      const subject = "Health Check-Up Reminder";
+      const subject = "Important Health Alert - Health Tracker";
       const body = `Dear ${patient.name},
-Your recent test results show that your blood pressure or blood sugar levels are above the normal range (${valueSummary}).
-We recommend scheduling a regular health check-up.
-Thank you.`;
+Your recent test results indicate levels above the normal range for: ${type}.
+
+Summary of values:
+- ${valueSummary}
+
+We strongly recommend scheduling a consultation with your doctor to discuss these results.
+Thank you for using Health Tracker.`;
       
       const emailResult = await sendEmail(patient.email, subject, body);
+      
+      // Also send to admin if configured
+      const adminEmailSetting = db.prepare("SELECT value FROM settings WHERE key = 'admin_notification_email'").get() as any;
+      if (adminEmailSetting?.value) {
+        await sendEmail(adminEmailSetting.value, `[ADMIN ALERT] ${subject}`, `Alert sent to patient ${patient.name} (${patient.email})\n\n${body}`);
+      }
+
       return res.json({ 
         id: result.lastInsertRowid, 
         alertTriggered: true, 
@@ -340,9 +487,14 @@ app.get("/api/settings", authenticateToken, (req, res) => {
 });
 
 app.post("/api/settings", authenticateToken, (req, res) => {
-  const { alert_cooldown_days } = req.body;
+  const { alert_cooldown_days, admin_notification_email } = req.body;
   try {
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('alert_cooldown_days', alert_cooldown_days.toString());
+    if (alert_cooldown_days !== undefined) {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('alert_cooldown_days', alert_cooldown_days.toString());
+    }
+    if (admin_notification_email !== undefined) {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('admin_notification_email', admin_notification_email.toString());
+    }
     res.json({ success: true });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
